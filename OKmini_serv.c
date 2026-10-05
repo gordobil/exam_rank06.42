@@ -1,11 +1,11 @@
-#include <string.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/socket.h>
 #include <sys/select.h>
+#include <netinet/in.h>
 
 int					_socket, _maxFd = 0, _clientCount = 0, _clients[FD_SETSIZE];
 fd_set				_readSet;
@@ -13,7 +13,7 @@ struct sockaddr_in	_address;
 bool				_active[FD_SETSIZE];
 char				*_bufs[FD_SETSIZE];
 
-void errorNExit(char* message){
+void errorExit(char* message){
 	write(2, message, strlen(message));
 	exit(1);
 }
@@ -35,7 +35,7 @@ void sendStatus(int clientSocket, int connexion){
 	sendStatusToClients(clientSocket, message, strlen(message));
 }
 
-void sendingMessage(int clientSocket, char *chunk){
+void sendMessage(int clientSocket, char *chunk){
 	char	*buf = _bufs[clientSocket];
 	size_t	old = buf ? strlen(buf) : 0;
 	char	*tmp = realloc(buf, old + strlen(chunk) + 1);
@@ -44,7 +44,7 @@ void sendingMessage(int clientSocket, char *chunk){
 	char	*nl;
 
 	if (!tmp)
-		errorNExit("Fatal error\n");
+		errorExit("Fatal error\n");
 	if (!buf)
 		tmp[0] = '\0';
 	strcat(tmp, chunk);
@@ -59,7 +59,7 @@ void sendingMessage(int clientSocket, char *chunk){
 
 	char	*rest = malloc(strlen(start) + 1);
 	if (!rest)
-		errorNExit("Fatal error\n");
+		errorExit("Fatal error\n");
 	strcpy(rest, start);
 	free(tmp);
 	_bufs[clientSocket] = rest;
@@ -78,7 +78,7 @@ void checkSocket(int clientSocket){
 	int		recvLen = recv(clientSocket, clientBuf, sizeof(clientBuf) - 1, 0);
 
 	if (recvLen > 0)
-		sendingMessage(clientSocket, clientBuf);
+		sendMessage(clientSocket, clientBuf);
 	else
 		disconnectClient(clientSocket);
 }
@@ -123,29 +123,27 @@ void serverLoop(){
 	}
 }
 
-int main(int argc, char** argv) {
+int 	main(int argc, char **argv) {
 	if (argc != 2)
-		errorNExit("Wrong number of arguments\n");
+		errorExit("Wrong number of arguments\n");
 	
 	int port = atoi(argv[1]);
 	if (port <= 0 || port > 65535)
-		errorNExit("Fatal error\n");
+		errorExit("Fatal error\n");
 
 	_socket = socket(AF_INET, SOCK_STREAM, 0); 
 	if (_socket < 0)
-		errorNExit("Fatal error\n");
+		errorExit("Fatal error\n");
 
 	_address.sin_family = AF_INET; 
 	_address.sin_addr.s_addr = htonl(2130706433);
 	_address.sin_port = htons(port);
   
 	if (bind(_socket, (struct sockaddr *)&_address, sizeof(_address)) < 0)
-		errorNExit("Fatal error\n");
+		errorExit("Fatal error\n");
 	
 	if (listen(_socket, 128) < 0)
-		errorNExit("Fatal error\n");
+		errorExit("Fatal error\n");
 
-	serverLoop();
-
-	return (0);
+	return (serverLoop(), 0);
 }
