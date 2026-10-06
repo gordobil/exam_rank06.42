@@ -1,3 +1,6 @@
+
+/* 1 FALLO */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -8,102 +11,102 @@
 #include <netinet/in.h>
 
 int					_socket, _maxFd = 0, _clientCount = 0, _clients[FD_SETSIZE];
-fd_set				_readSet;
 struct sockaddr_in	_address;
+fd_set				_readSet;
 bool				_active[FD_SETSIZE];
 char				*_bufs[FD_SETSIZE];
 
-void errorExit(char* message){
-	write(2, message, strlen(message));
+void	errorExit(char *error){
+	write(2, error, strlen(error));
 	exit(1);
 }
 
-void sendStatusToClients(int clientSocket, char *message, int len){
+void	sendToClients(int clientSocket, char *message, int len){
 	for (int fd = 0; fd <= _maxFd; fd++){
 		if (_active[fd] && fd != clientSocket)
 			send(fd, message, len, MSG_NOSIGNAL);
 	}
 }
 
-void sendStatus(int clientSocket, int connexion){
+void	sendStatus(int clientSocket, int status){
 	char	message[100] = {};
 
-	if (connexion == 1)
+	if (status == 1)
 		sprintf(message, "server: client %d just arrived\n", _clients[clientSocket]);
 	else
 		sprintf(message, "server: client %d just left\n", _clients[clientSocket]);
-	sendStatusToClients(clientSocket, message, strlen(message));
+	
+	sendToClients(clientSocket, message, strlen(message));
 }
 
-void sendMessage(int clientSocket, char *chunk){
-	char	*buf = _bufs[clientSocket];
-	size_t	old = buf ? strlen(buf) : 0;
-	char	*tmp = realloc(buf, old + strlen(chunk) + 1);
-	char	introBuf[100] = {};
-	char	*start = tmp;
-	char	*nl;
-
-	if (!tmp)
-		errorExit("Fatal error\n");
-	if (!buf)
-		tmp[0] = '\0';
-	strcat(tmp, chunk);
-
-	sprintf(introBuf, "client %d: ", _clients[clientSocket]);
-
-	while ((nl = strstr(start, "\n"))){
-		sendStatusToClients(clientSocket, introBuf, strlen(introBuf));
-		sendStatusToClients(clientSocket, start, nl - start + 1);
-		start = nl + 1;
-	}
-
-	char	*rest = malloc(strlen(start) + 1);
-	if (!rest)
-		errorExit("Fatal error\n");
-	strcpy(rest, start);
-	free(tmp);
-	_bufs[clientSocket] = rest;
-}
-
-void disconnectClient(int clientSocket){
-	sendStatus(clientSocket, 2);
-	free(_bufs[clientSocket]);
-	_bufs[clientSocket] = NULL;
-	_active[clientSocket] = false;
-	close(clientSocket);
-}
-
-void checkSocket(int clientSocket){
-	char	clientBuf[4096] = {};
-	int		recvLen = recv(clientSocket, clientBuf, sizeof(clientBuf) - 1, 0);
-
-	if (recvLen > 0)
-		sendMessage(clientSocket, clientBuf);
-	else
-		disconnectClient(clientSocket);
-}
-
-void newClient(){
+void	newClient(){
 	struct sockaddr_in	clientAddress;
 	socklen_t			clientLen = sizeof(clientAddress);
+	int					clientSocket = accept(_socket, (struct sockaddr *)&clientAddress, &clientLen);
 
-	int clientSocket = accept(_socket, (struct sockaddr*)&clientAddress, &clientLen);
-	if (clientSocket > 0){
-		if (clientSocket > _maxFd)
+	if (clientSocket > 0){ // x: >, ok: >=
+		if (_maxFd < clientSocket)
 			_maxFd = clientSocket;
-		_clients[clientSocket] = _clientCount++;
 		_active[clientSocket] = true;
+		_clients[clientSocket] = _clientCount++;
 		sendStatus(clientSocket, 1);
 	}
 }
 
-void serverLoop(){
+void	disconnectClient(int clientSocket){
+	free(_bufs[clientSocket]);
+	_bufs[clientSocket] = NULL;
+	close(clientSocket);
+	_active[clientSocket] = false;
+	sendStatus(clientSocket, 2);
+}
+
+void	sendMessage(int clientSocket, char *newChunk){
+	char	*buf = _bufs[clientSocket];
+	int		oldLen = buf ? strlen(buf) : 0;
+	char	*temp = realloc(buf, oldLen + strlen(newChunk) + 1);
+	char	*start = temp;
+	char	*nl;
+	char	log[100] = {};
+
+	if (!temp)
+		errorExit("Fatal error\n");
+	if (!buf)
+		temp[0] = '\0';
+
+	strcat(temp, newChunk);
+	sprintf(log, "client %d: ", _clients[clientSocket]);
+	while ((nl = strstr(start, "\n"))){
+		sendToClients(clientSocket, log, strlen(log));
+		sendToClients(clientSocket, start, nl - start + 1);
+		start = nl + 1;
+	}
+	char	*rest = malloc(strlen(start) + 1);
+	if (!rest)
+		errorExit("Fatal error\n");
+	strcpy(rest, start);
+	free(temp);
+	_bufs[clientSocket] = rest;
+}
+
+void	checkClientRecv(int clientSocket){
+	char	clientBuff[4096] = {};
+	size_t	recvLen = recv(clientSocket, clientBuff, sizeof(clientBuff) - 1, 0);
+
+	if (recvLen > 0)
+		sendMessage(clientSocket, clientBuff);
+	else
+		disconnectClient(clientSocket);
+}
+
+void	serverLoop(){
 	while (1){
 		FD_ZERO(&_readSet);
 		FD_SET(_socket, &_readSet);
-		if (_socket > _maxFd)
-			_maxFd = _socket;
 
+		if (_maxFd < _socket)
+			_maxFd = _socket;
+		
 		for (int fd = 0; fd <= _maxFd; fd++){
 			if (_active[fd])
 				FD_SET(fd, &_readSet);
@@ -111,34 +114,35 @@ void serverLoop(){
 
 		if (select(_maxFd + 1, &_readSet, NULL, NULL, NULL) <= 0)
 			continue ;
-
+		
 		for (int fd = 0; fd <= _maxFd; ++fd){
 			if (!(FD_ISSET(fd, &_readSet)))
 				continue ;
+			
 			if (fd == _socket)
 				newClient();
 			else
-				checkSocket(fd);
+				checkClientRecv(fd);
 		}
 	}
 }
 
-int 	main(int argc, char **argv) {
+int		main(int argc, char **argv){
 	if (argc != 2)
 		errorExit("Wrong number of arguments\n");
-	
-	int port = atoi(argv[1]);
+
+	int	port = atoi(argv[1]);
 	if (port <= 0 || port > 65535)
 		errorExit("Fatal error\n");
 
-	_socket = socket(AF_INET, SOCK_STREAM, 0); 
+	_socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (_socket < 0)
 		errorExit("Fatal error\n");
-
-	_address.sin_family = AF_INET; 
+	
+	_address.sin_family = AF_INET;
 	_address.sin_addr.s_addr = htonl(2130706433);
 	_address.sin_port = htons(port);
-  
+
 	if (bind(_socket, (struct sockaddr *)&_address, sizeof(_address)) < 0)
 		errorExit("Fatal error\n");
 	

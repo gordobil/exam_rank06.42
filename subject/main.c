@@ -4,6 +4,8 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 int extract_message(char **buf, char **msg)
 {
@@ -55,7 +57,8 @@ char *str_join(char *buf, char *add)
 
 int main() {
 	int sockfd, connfd, len;
-	struct sockaddr_in servaddr, cli; 
+	struct sockaddr_in servaddr, cli;
+	socklen_t			cliLen = sizeof(cli);
 
 	// socket create and verification 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -83,8 +86,7 @@ int main() {
 		printf("cannot listen\n"); 
 		exit(0); 
 	}
-	len = sizeof(cli);
-	connfd = accept(sockfd, (struct sockaddr *)&cli, &len);
+	connfd = accept(sockfd, (struct sockaddr *)&cli, &cliLen);
 	if (connfd < 0) { 
 		printf("server acccept failed...\n"); 
 		exit(0); 
