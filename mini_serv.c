@@ -36,6 +36,20 @@ void	sendStatus(int clientSocket, int status){
 	sendToClients(clientSocket, message, strlen(message));
 }
 
+void	newClient(){
+	struct sockaddr_in	clientAddress;
+	socklen_t			clientLen = sizeof(clientAddress);
+	int					clientSocket = accept(_socket, (struct sockaddr *)&clientAddress, &clientLen);
+
+	if (clientSocket >= 0){
+		if (_maxFd < clientSocket)
+			_maxFd = clientSocket;
+		_clients[clientSocket] = _clientCount++;
+		_active[clientSocket] = true;
+		sendStatus(clientSocket, 1);
+	}
+}
+
 void	sendMessage(int clientSocket, char *newChunk){
 	char	*buf = _bufs[clientSocket];
 	size_t	oldLen = buf ? strlen(buf) : 0;
@@ -82,20 +96,6 @@ void	checkClientRecv(int clientSocket){
 		sendMessage(clientSocket, clientBuf);
 	else
 		disconnectClient(clientSocket);
-}
-
-void	newClient(){
-	struct sockaddr_in	clientAddress;
-	socklen_t			clientLen = sizeof(clientAddress);
-	int					clientSocket = accept(_socket, (struct sockaddr *)&clientAddress, &clientLen);
-
-	if (clientSocket >= 0){
-		if (_maxFd < clientSocket)
-			_maxFd = clientSocket;
-		_clients[clientSocket] = _clientCount++;
-		_active[clientSocket] = true;
-		sendStatus(clientSocket, 1);
-	}
 }
 
 void	serverLoop(){
